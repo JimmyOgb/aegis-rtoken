@@ -7,12 +7,14 @@ import { Globe, ArrowRight, ShieldAlert, Cpu, Zap, Activity } from "lucide-react
 interface MultiMarketOverviewProps {
   markets: MarketOverviewItem[];
   selectedSymbol: string;
+  isBackendOnline?: boolean;
   onSelectSymbol: (symbol: string) => void;
 }
 
 export const MultiMarketOverview: React.FC<MultiMarketOverviewProps> = ({
   markets,
   selectedSymbol,
+  isBackendOnline = true,
   onSelectSymbol,
 }) => {
   return (
@@ -57,8 +59,32 @@ export const MultiMarketOverview: React.FC<MultiMarketOverviewProps> = ({
             ) : (
               markets.map((m) => {
                 const isSelected = m.symbol.toUpperCase() === selectedSymbol.toUpperCase();
-                const isOnline = m.status.toLowerCase() === "online" && m.market_connected;
-                const spreadFormatted = m.spread_percent > 0 ? `${m.spread_percent.toFixed(3)}%` : "--";
+
+                // Granular honest market status
+                let rowStatus = "UNAVAILABLE";
+                let rowColor = "rose";
+
+                if (!isBackendOnline) {
+                  rowStatus = "BACKEND OFFLINE";
+                  rowColor = "rose";
+                } else if (m.market_connected && m.bid > 0) {
+                  if (m.quote_freshness !== undefined && m.quote_freshness > 10) {
+                    rowStatus = "STALE QUOTE";
+                    rowColor = "amber";
+                  } else {
+                    rowStatus = "ACTIVE";
+                    rowColor = "emerald";
+                  }
+                } else if (m.status.toLowerCase() === "online") {
+                  rowStatus = "MARKET DATA UNAVAILABLE";
+                  rowColor = "amber";
+                } else {
+                  rowStatus = "UNAVAILABLE";
+                  rowColor = "rose";
+                }
+
+                const isLive = rowStatus === "ACTIVE" || rowStatus === "STALE QUOTE";
+                const spreadFormatted = isLive && m.spread_percent > 0 ? `${m.spread_percent.toFixed(3)}%` : "--";
 
                 return (
                   <tr
@@ -86,24 +112,30 @@ export const MultiMarketOverview: React.FC<MultiMarketOverviewProps> = ({
                     <td className="py-3 px-3">
                       <span
                         className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
-                          isOnline
+                          rowColor === "emerald"
                             ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                            : rowColor === "amber"
+                            ? "bg-amber-500/10 text-amber-400 border border-amber-500/30"
                             : "bg-rose-500/10 text-rose-400 border border-rose-500/30"
                         }`}
                       >
                         <span
                           className={`w-1.5 h-1.5 rounded-full ${
-                            isOnline ? "bg-emerald-400" : "bg-rose-400"
+                            rowColor === "emerald"
+                              ? "bg-emerald-400 animate-pulse"
+                              : rowColor === "amber"
+                              ? "bg-amber-400"
+                              : "bg-rose-400"
                           }`}
                         />
-                        {isOnline ? "ONLINE" : "UNAVAILABLE"}
+                        {rowStatus}
                       </span>
                     </td>
                     <td className="py-3 px-3 text-right text-slate-300">
-                      {m.bid > 0 ? `$${m.bid.toFixed(2)}` : "--"}
+                      {isLive && m.bid > 0 ? `$${m.bid.toFixed(2)}` : "--"}
                     </td>
                     <td className="py-3 px-3 text-right text-slate-300">
-                      {m.ask > 0 ? `$${m.ask.toFixed(2)}` : "--"}
+                      {isLive && m.ask > 0 ? `$${m.ask.toFixed(2)}` : "--"}
                     </td>
                     <td className="py-3 px-3 text-right font-semibold text-slate-200">
                       {spreadFormatted}
@@ -114,7 +146,7 @@ export const MultiMarketOverview: React.FC<MultiMarketOverviewProps> = ({
                           {m.latest_event}
                         </span>
                       ) : (
-                        <span className="text-slate-600 italic">Pending Catalyst</span>
+                        <span className="text-slate-600 italic">Waiting for event</span>
                       )}
                     </td>
                     <td className="py-3 px-3 text-slate-300">
@@ -124,7 +156,7 @@ export const MultiMarketOverview: React.FC<MultiMarketOverviewProps> = ({
                           {m.latest_qwen}
                         </span>
                       ) : (
-                        <span className="text-slate-600 italic">Awaiting</span>
+                        <span className="text-slate-600 italic">Ready / Waiting</span>
                       )}
                     </td>
                     <td className="py-3 px-3">

@@ -12,33 +12,11 @@ const CORE_RTOKENS = [
   { symbol: "RMETAUSDT", underlying: "META", base: "rMETA", minQty: 0.0001, minAmt: 10.0 },
 ];
 
-async function fetchRealBBO(symbol: string): Promise<{ bid: number; ask: number; spread: number; connected: boolean }> {
-  try {
-    const res = await fetch(`https://api.bitget.com/api/v3/market/orderbook?symbol=${symbol}&type=step0&limit=5`, {
-      cache: "no-store",
-    });
-    if (!res.ok) return { bid: 0, ask: 0, spread: 0, connected: false };
-    const payload = await res.json();
-    const data = payload?.data || {};
-    const bids = data.bids || [];
-    const asks = data.asks || [];
-    const bestBid = bids.length > 0 ? parseFloat(bids[0][0]) : 0;
-    const bestAsk = asks.length > 0 ? parseFloat(asks[0][0]) : 0;
-    const mid = (bestBid + bestAsk) / 2;
-    const spread = mid > 0 ? ((bestAsk - bestBid) / mid) * 100 : 0;
-    return {
-      bid: bestBid,
-      ask: bestAsk,
-      spread: Math.max(0, spread),
-      connected: bestBid > 0 && bestAsk > 0,
-    };
-  } catch {
-    return { bid: 0, ask: 0, spread: 0, connected: false };
-  }
-}
-
 export async function GET() {
-  const upstream = process.env.AEGIS_BACKEND_URL;
+  const upstream =
+    process.env.AEGIS_BACKEND_URL ||
+    (process.env.NODE_ENV === "development" ? "http://127.0.0.1:8000" : undefined);
+
   if (upstream) {
     try {
       const res = await fetch(`${upstream.replace(/\/+$/, "")}/api/markets`, {
@@ -54,28 +32,67 @@ export async function GET() {
     }
   }
 
-  // Fetch genuine real Bitget market quotes
-  const results = await Promise.all(
-    CORE_RTOKENS.map(async (tok) => {
-      const quote = await fetchRealBBO(tok.symbol);
-      return {
-        symbol: tok.symbol,
-        underlying: tok.underlying,
-        base_coin: tok.base,
-        quote_coin: "USDT",
-        status: "online",
-        min_order_qty: tok.minQty,
-        min_order_amount: tok.minAmt,
-        bid: quote.bid,
-        ask: quote.ask,
-        spread_percent: quote.spread,
-        market_connected: quote.connected,
-        latest_event: null,
-        latest_qwen: null,
-        latest_risk: "PENDING_CATALYST",
-      };
-    })
-  );
+  // Fetch genuine real Bitget market quotes using public tickers endpoint
+  try {
+    const res = await fetch("https://api.bitget.com/api/v3/market/tickers?category=SPOT", {
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const payload = await res.json();
+      const dataList: Array<Record<string, any>> = payload?.data || [];
+      const tickerMap = new Map(dataList.map((item) => [String(item.symbol).toUpperCase(), item]));
 
-  return NextResponse.json(results);
+      const results = CORE_RTOKENS.map((tok) => {
+        const item = tickerMap.get(tok.symbol);
+        const bestBid = item?.bid1Price ? parseFloat(item.bid1Price) : 0;
+        const bestAsk = item?.ask1Price ? parseFloat(item.ask1Price) : 0;
+        const mid = (bestBid + bestAsk) / 2;
+        const spread = mid > 0 ? ((bestAsk - bestBid) / mid) * 100 : 0;
+        const isConnected = bestBid > 0 && bestAsk > 0;
+
+        return {
+          symbol: tok.symbol,
+          underlying: tok.underlying,
+          base_coin: tok.base,
+          quote_coin: "USDT",
+          status: "online",
+          min_order_qty: tok.minQty,
+          min_order_amount: tok.minAmt,
+          bid: bestBid,
+          ask: bestAsk,
+          spread_percent: spread,
+          market_connected: isConnected,
+          connection_status: isConnected ? "CONNECTED" : "UNAVAILABLE",
+          quote_freshness: isConnected ? 0.5 : 0.0,
+          latest_event: null,
+          latest_qwen: null,
+          latest_risk: "PENDING_CATALYST",
+        };
+      });
+      return NextResponse.json(results);
+    }
+  } catch {
+    // If external fetch fails, return honest unavailable state
+  }
+
+  return NextResponse.json(
+    CORE_RTOKENS.map((tok) => ({
+      symbol: tok.symbol,
+      underlying: tok.underlying,
+      base_coin: tok.base,
+      quote_coin: "USDT",
+      status: "online",
+      min_order_qty: tok.minQty,
+      min_order_amount: tok.minAmt,
+      bid: 0,
+      ask: 0,
+      spread_percent: 0,
+      market_connected: false,
+      connection_status: "UNAVAILABLE",
+      quote_freshness: 0,
+      latest_event: null,
+      latest_qwen: null,
+      latest_risk: "PENDING_CATALYST",
+    }))
+  );
 }

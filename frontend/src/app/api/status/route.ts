@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const upstream = process.env.AEGIS_BACKEND_URL;
+  const upstream =
+    process.env.AEGIS_BACKEND_URL ||
+    (process.env.NODE_ENV === "development" ? "http://127.0.0.1:8000" : undefined);
+
   if (upstream) {
     try {
       const res = await fetch(`${upstream.replace(/\/+$/, "")}/api/status`, {
@@ -15,7 +18,28 @@ export async function GET() {
         return NextResponse.json(data);
       }
     } catch {
-      // Fall through to edge-computed real status
+      // Upstream unreachable in development
+      if (process.env.NODE_ENV === "development") {
+        return NextResponse.json({
+          agent_status: "DISCONNECTED",
+          status_label: "BACKEND OFFLINE",
+          bitget_demo_status: "Bitget Demo Disconnected",
+          qwen_status: "Qwen Unavailable",
+          market_data_status: "Market Data Unavailable",
+          asset_support_status: "Supported Asset",
+          order_status_label: "Execution Blocked",
+          target_asset: "RAAPLUSDT",
+          trading_mode: "DISCONNECTED",
+          market_connected: false,
+          circuit_breaker: {
+            is_tripped: false,
+            consecutive_faults: 0,
+            trip_reason: null,
+            remaining_cooldown_seconds: 0,
+          },
+          telemetry_count: 0,
+        });
+      }
     }
   }
 

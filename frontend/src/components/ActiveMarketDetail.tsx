@@ -9,6 +9,7 @@ interface ActiveMarketDetailProps {
   market: MarketSnapshot | null;
   overviewItem?: MarketOverviewItem | null;
   discoveredSymbols: string[];
+  isBackendOnline?: boolean;
   onSelectSymbol: (symbol: string) => void;
 }
 
@@ -17,10 +18,36 @@ export const ActiveMarketDetail: React.FC<ActiveMarketDetailProps> = ({
   market,
   overviewItem,
   discoveredSymbols,
+  isBackendOnline = true,
   onSelectSymbol,
 }) => {
-  const isOnline = Boolean(market && (market.is_connected || market.connected) && market.bid > 0);
-  const midPrice = market && market.bid > 0 && market.ask > 0 ? (market.bid + market.ask) / 2 : 0;
+  // Determine granular, honest status
+  let statusText = "UNAVAILABLE";
+  let badgeColor = "rose";
+
+  if (!isBackendOnline) {
+    statusText = "BACKEND OFFLINE";
+    badgeColor = "rose";
+  } else if (market?.status === "not_found") {
+    statusText = "MARKET NOT FOUND";
+    badgeColor = "amber";
+  } else if (market && (market.is_connected || market.connected) && market.bid > 0) {
+    if (market.quote_freshness !== undefined && market.quote_freshness > 10) {
+      statusText = "STALE QUOTE";
+      badgeColor = "amber";
+    } else {
+      statusText = "ACTIVE";
+      badgeColor = "emerald";
+    }
+  } else if (market && market.status === "online" && (market.bid <= 0 || !market.is_connected)) {
+    statusText = "MARKET DATA UNAVAILABLE";
+    badgeColor = "amber";
+  } else {
+    statusText = "UNAVAILABLE";
+    badgeColor = "rose";
+  }
+
+  const isLive = statusText === "ACTIVE" || statusText === "STALE QUOTE";
 
   return (
     <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 shadow-xl">
@@ -36,17 +63,23 @@ export const ActiveMarketDetail: React.FC<ActiveMarketDetailProps> = ({
               </h2>
               <span
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold font-mono uppercase ${
-                  isOnline
+                  badgeColor === "emerald"
                     ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                    : badgeColor === "amber"
+                    ? "bg-amber-500/10 text-amber-400 border border-amber-500/30"
                     : "bg-rose-500/10 text-rose-400 border border-rose-500/30"
                 }`}
               >
                 <span
                   className={`w-1.5 h-1.5 rounded-full ${
-                    isOnline ? "bg-emerald-400" : "bg-rose-400"
+                    badgeColor === "emerald"
+                      ? "bg-emerald-400 animate-pulse"
+                      : badgeColor === "amber"
+                      ? "bg-amber-400"
+                      : "bg-rose-400"
                   }`}
                 />
-                {isOnline ? "ONLINE" : "UNAVAILABLE"}
+                {statusText}
               </span>
             </div>
             <p className="text-xs text-slate-400">
@@ -69,7 +102,7 @@ export const ActiveMarketDetail: React.FC<ActiveMarketDetailProps> = ({
             {discoveredSymbols.length > 0 ? (
               discoveredSymbols.map((sym) => (
                 <option key={sym} value={sym}>
-                  {sym} {sym === "RAAPLUSDT" ? "(Apple rToken)" : sym === "RNVDAUSDT" ? "(Nvidia rToken)" : sym === "RTSLAUSDT" ? "(Tesla rToken)" : sym === "RMSFTUSDT" ? "(Microsoft rToken)" : ""}
+                  {sym} {sym === "RAAPLUSDT" ? "(Apple rToken)" : sym === "RNVDAUSDT" ? "(Nvidia rToken)" : sym === "RTSLAUSDT" ? "(Tesla rToken)" : sym === "RMSFTUSDT" ? "(Microsoft rToken)" : sym === "RAMZNUSDT" ? "(Amazon rToken)" : sym === "RGOOGLUSDT" ? "(Google rToken)" : sym === "RMETAUSDT" ? "(Meta rToken)" : ""}
                 </option>
               ))
             ) : (
@@ -94,7 +127,7 @@ export const ActiveMarketDetail: React.FC<ActiveMarketDetailProps> = ({
         <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-3">
           <span className="text-[11px] font-mono text-slate-400 block uppercase">Best Bid</span>
           <span className="text-sm font-bold font-mono text-emerald-400">
-            {market && market.bid > 0 ? `$${market.bid.toFixed(2)}` : "--"}
+            {isLive && market && market.bid > 0 ? `$${market.bid.toFixed(2)}` : "--"}
           </span>
           <span className="text-[10px] text-slate-500 font-mono block mt-0.5">Bitget BBO</span>
         </div>
@@ -102,7 +135,7 @@ export const ActiveMarketDetail: React.FC<ActiveMarketDetailProps> = ({
         <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-3">
           <span className="text-[11px] font-mono text-slate-400 block uppercase">Best Ask</span>
           <span className="text-sm font-bold font-mono text-rose-400">
-            {market && market.ask > 0 ? `$${market.ask.toFixed(2)}` : "--"}
+            {isLive && market && market.ask > 0 ? `$${market.ask.toFixed(2)}` : "--"}
           </span>
           <span className="text-[10px] text-slate-500 font-mono block mt-0.5">Bitget BBO</span>
         </div>
@@ -110,7 +143,7 @@ export const ActiveMarketDetail: React.FC<ActiveMarketDetailProps> = ({
         <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-3">
           <span className="text-[11px] font-mono text-slate-400 block uppercase">Spread %</span>
           <span className="text-sm font-bold font-mono text-cyan-400">
-            {market && market.spread_percent > 0 ? `${market.spread_percent.toFixed(3)}%` : "--"}
+            {isLive && market && market.spread_percent > 0 ? `${market.spread_percent.toFixed(3)}%` : "--"}
           </span>
           <span className="text-[10px] text-slate-500 font-mono block mt-0.5">Max Threshold: 0.50%</span>
         </div>
@@ -121,14 +154,14 @@ export const ActiveMarketDetail: React.FC<ActiveMarketDetailProps> = ({
             Min {market?.min_order_qty ?? overviewItem?.min_order_qty ?? 0.0001}
           </span>
           <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-            Min Notional: ${market?.min_order_amount ?? overviewItem?.min_order_amount ?? 5.0}
+            Min Notional: ${market?.min_order_amount ?? overviewItem?.min_order_amount ?? 10.0}
           </span>
         </div>
 
         <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-3">
           <span className="text-[11px] font-mono text-slate-400 block uppercase">Quote Freshness</span>
           <span className="text-sm font-bold font-mono text-emerald-300">
-            {market?.quote_freshness !== undefined ? `${market.quote_freshness.toFixed(1)}s ago` : "LIVE"}
+            {isLive && market?.quote_freshness !== undefined ? `${market.quote_freshness.toFixed(1)}s ago` : "--"}
           </span>
           <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
             {market?.provider || "Bitget UTA SPOT"}

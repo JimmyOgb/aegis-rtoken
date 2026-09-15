@@ -51,8 +51,15 @@ def create_app(
 
     @app.get("/api/status")
     def get_status() -> Dict[str, Any]:
+        from datetime import datetime, timezone
         from aegis_rtoken.event_engine import RTOKEN_EQUITY_MAP
         
+        # Ensure active target quote is refreshed if stale or missing
+        now = datetime.now(timezone.utc)
+        snap = _feed.get_snapshot(settings.target_asset)
+        if not snap or (now - snap.timestamp).total_seconds() > _feed.stale_timeout_seconds:
+            _feed.fetch_live_quote(settings.target_asset)
+
         market_conn = _feed.is_connected()
         qwen_ok = bool(settings.effective_llm_key.strip())
         is_supported_asset = settings.target_asset.upper() in RTOKEN_EQUITY_MAP or (
@@ -152,7 +159,12 @@ def create_app(
     @app.get("/api/market")
     def get_market(symbol: Optional[str] = None) -> Dict[str, Any]:
         target = (symbol or settings.target_asset).upper()
-        snapshot = _feed.get_snapshot(target) or _feed.fetch_live_quote(target)
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        snap = _feed.get_snapshot(target)
+        if not snap or not snap.is_connected or (now - snap.timestamp).total_seconds() > _feed.stale_timeout_seconds:
+            snap = _feed.fetch_live_quote(target) or snap
+        snapshot = snap
         rules = _feed.get_instrument_rules(target) or _feed.fetch_instrument_rules(target) or {}
 
         if not snapshot:

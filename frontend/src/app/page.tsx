@@ -95,19 +95,21 @@ export default function DashboardPage() {
             label="Active Market"
             value={selectedSymbol}
             subValue={
-              isMarketConnected
+              !isConnectedToBackend
+                ? "Backend offline"
+                : isMarketConnected
                 ? `Mid: $${(((market?.bid || 0) + (market?.ask || 0)) / 2).toFixed(2)}`
-                : "No live quote"
+                : "Market data unavailable"
             }
-            badge={isMarketConnected ? "LIVE BBO" : "DISCONNECTED"}
-            badgeColor={isMarketConnected ? "emerald" : "rose"}
+            badge={!isConnectedToBackend ? "OFFLINE" : isMarketConnected ? "ACTIVE" : "UNAVAILABLE"}
+            badgeColor={!isConnectedToBackend ? "rose" : isMarketConnected ? "emerald" : "amber"}
             icon={<Radio className="h-4 w-4" />}
           />
           <MetricCard
             label="Catalyst Feed"
-            value={latestDecision ? latestDecision.event_type : "RSS SENTINEL"}
-            subValue={latestDecision ? latestDecision.headline : "Monitoring RSS feeds"}
-            badge={latestDecision ? latestDecision.sentiment : "ACTIVE"}
+            value={latestDecision ? latestDecision.event_type : "WAITING FOR EVENT"}
+            subValue={latestDecision ? latestDecision.headline : "Monitoring external catalysts"}
+            badge={latestDecision ? latestDecision.sentiment : "LISTENING"}
             badgeColor={
               latestDecision?.sentiment === "BULLISH"
                 ? "emerald"
@@ -122,15 +124,31 @@ export default function DashboardPage() {
             value={
               latestDecision
                 ? `${((latestDecision.model_confidence ?? latestDecision.confidence ?? 0) * 100).toFixed(0)}% Conf`
-                : "QWEN 3.8 MAX"
+                : status?.qwen_status === "Qwen Connected"
+                ? "CONNECTED / READY"
+                : "UNAVAILABLE"
             }
             subValue={
               latestDecision
                 ? `Sentiment: ${latestDecision.sentiment}`
-                : "Bitget AI Intelligence"
+                : status?.qwen_status === "Qwen Connected"
+                ? "Waiting for event"
+                : "Key unconfigured"
             }
-            badge={latestDecision && (latestDecision.model_confidence ?? latestDecision.confidence ?? 0) >= 0.75 ? "VERIFIED" : "STANDBY"}
-            badgeColor={latestDecision && (latestDecision.model_confidence ?? latestDecision.confidence ?? 0) >= 0.75 ? "cyan" : "slate"}
+            badge={
+              latestDecision && (latestDecision.model_confidence ?? latestDecision.confidence ?? 0) >= 0.75
+                ? "VERIFIED"
+                : status?.qwen_status === "Qwen Connected"
+                ? "READY"
+                : "UNAVAILABLE"
+            }
+            badgeColor={
+              latestDecision && (latestDecision.model_confidence ?? latestDecision.confidence ?? 0) >= 0.75
+                ? "cyan"
+                : status?.qwen_status === "Qwen Connected"
+                ? "emerald"
+                : "slate"
+            }
             icon={<Cpu className="h-4 w-4" />}
           />
           <MetricCard
@@ -161,6 +179,7 @@ export default function DashboardPage() {
           market={market}
           overviewItem={activeOverviewItem}
           discoveredSymbols={discoveredSymbols}
+          isBackendOnline={isConnectedToBackend}
           onSelectSymbol={setSelectedSymbol}
         />
 
@@ -168,6 +187,7 @@ export default function DashboardPage() {
         <MultiMarketOverview
           markets={markets}
           selectedSymbol={selectedSymbol}
+          isBackendOnline={isConnectedToBackend}
           onSelectSymbol={setSelectedSymbol}
         />
 

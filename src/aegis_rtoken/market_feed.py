@@ -87,7 +87,7 @@ class MarketFeed:
                         # Parse exchange timestamp if available
                         ts_raw = item.get("ts") or payload.get("requestTime")
                         quote_time = datetime.fromtimestamp(int(ts_raw) / 1000.0, tz=timezone.utc) if ts_raw else now
-                        age = (now - quote_time).total_seconds()
+                        age = max(0.1, round((now - quote_time).total_seconds(), 2))
 
                         if age > self.stale_timeout_seconds:
                             self._is_connected = False
@@ -155,7 +155,7 @@ class MarketFeed:
 
                     ts_raw = item.get("ts")
                     quote_time = datetime.fromtimestamp(int(ts_raw) / 1000.0, tz=timezone.utc) if ts_raw else now
-                    age = (now - quote_time).total_seconds()
+                    age = max(0.1, round((now - quote_time).total_seconds(), 2))
 
                     if age > self.stale_timeout_seconds:
                         self._is_connected = False
@@ -362,9 +362,57 @@ class MarketFeed:
         """Fetches live quotes for multiple rToken markets without mocking."""
         target_symbols = symbols or list(self._discovered_markets.keys())
         if not target_symbols:
-            target_symbols = ["RAAPLUSDT", "RNVDAUSDT", "RTSLAUSDT", "RMSFTUSDT"]
+            target_symbols = [
+                "RAAPLUSDT", "RNVDAUSDT", "RTSLAUSDT", "RMSFTUSDT",
+                "RAMZNUSDT", "RGOOGLUSDT", "RMETAUSDT"
+            ]
 
+        target_set = {s.upper() for s in target_symbols}
+        now = datetime.now(timezone.utc)
+        category = getattr(settings, "category", "SPOT")
         results = {}
+
+        # 1. Fast batch query via bgc CLI (fetches all spot tickers in 1 shot)
+        bgc_bin = shutil.which("bgc")
+        if bgc_bin:
+            try:
+                cmd = ["bgc", "market", "--action", "tickers", "--category", category]
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=10, shell=sys.platform == "win32")
+                if res.returncode == 0 and res.stdout:
+                    parsed = json.loads(res.stdout)
+                    data_list = parsed.get("data") or []
+                    for item in data_list:
+                        sym = item.get("symbol", "").upper()
+                        if sym in target_set:
+                            bid_str = item.get("bid1Price") or item.get("bidPrice")
+                            ask_str = item.get("ask1Price") or item.get("askPrice")
+                            if bid_str and ask_str:
+                                bid = float(bid_str)
+                                ask = float(ask_str)
+                                if bid > 0 and ask > 0 and ask >= bid:
+                                    ts_raw = item.get("ts")
+                                    quote_time = datetime.fromtimestamp(int(ts_raw) / 1000.0, tz=timezone.utc) if ts_raw else now
+                                    age = max(0.0, (now - quote_time).total_seconds())
+                                    snap = MarketSnapshot.calculate(
+                                        symbol=sym,
+                                        bid=bid,
+                                        ask=ask,
+                                        timestamp=quote_time,
+                                        is_connected=True,
+                                        connection_status="CONNECTED",
+                                        book_freshness=age,
+                                        provider="Bitget-UTA-v3",
+                                    )
+                                    self._snapshots[sym] = snap
+                                    results[sym] = snap
+                    if results:
+                        self._last_heartbeat = now
+                        self._is_connected = True
+                        return results
+            except Exception as e:
+                logger.debug(f"Batch tickers query error: {e}")
+
+        # 2. Fallback to individual live quote fetches
         for sym in target_symbols:
             snapshot = self.fetch_live_quote(sym)
             if snapshot:
@@ -376,21 +424,36 @@ class MarketFeed:
         if not self._discovered_markets:
             self.discover_rtoken_markets()
 
-        overview = []
         now = datetime.now(timezone.utc)
-        core_symbols = ["RAAPLUSDT", "RNVDAUSDT", "RTSLAUSDT", "RMSFTUSDT", "RAMZNUSDT", "RGOOGLUSDT"]
+        core_symbols = [
+            "RAAPLUSDT", "RNVDAUSDT", "RTSLAUSDT", "RMSFTUSDT",
+            "RAMZNUSDT", "RGOOGLUSDT", "RMETAUSDT"
+        ]
         all_symbols = list(self._discovered_markets.keys())
         sorted_symbols = [s for s in core_symbols if s in all_symbols] + [s for s in all_symbols if s not in core_symbols]
 
         if not sorted_symbols:
-            sorted_symbols = ["RAAPLUSDT", "RNVDAUSDT", "RTSLAUSDT", "RMSFTUSDT"]
+            sorted_symbols = core_symbols
 
+        # Ensure all symbols have fresh live snapshots from Bitget
+        needs_refresh = False
+        for sym in sorted_symbols:
+            snap = self._snapshots.get(sym)
+            if not snap or (now - snap.timestamp).total_seconds() > self.stale_timeout_seconds:
+                needs_refresh = True
+                break
+
+        if needs_refresh:
+            self.refresh_multi_market_quotes(sorted_symbols)
+            now = datetime.now(timezone.utc)
+
+        overview = []
         for sym in sorted_symbols:
             rules = self._instrument_rules.get(sym) or {}
             snap = self._snapshots.get(sym)
 
             if snap and snap.is_connected and snap.bid > 0:
-                age = (now - snap.timestamp).total_seconds()
+                age = max(0.0, (now - snap.timestamp).total_seconds())
                 conn_status = "CONNECTED" if age <= self.stale_timeout_seconds else "DISCONNECTED"
                 freshness = round(age, 2)
                 bid = snap.bid
@@ -428,6 +491,7 @@ class MarketFeed:
                 "last_update_time": last_time,
                 "connection_status": conn_status,
                 "is_connected": conn_status == "CONNECTED",
+                "market_connected": conn_status == "CONNECTED",
             })
 
         return overview

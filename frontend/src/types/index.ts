@@ -44,6 +44,7 @@ export interface MarketOverviewItem {
   bid: number;
   ask: number;
   spread_percent: number;
+  quote_freshness?: number;
   market_connected: boolean;
   latest_event: string | null;
   latest_qwen: string | null;
