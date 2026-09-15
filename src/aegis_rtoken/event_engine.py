@@ -60,6 +60,11 @@ class EventEngine:
     def is_relevant_to_asset(self, headline: str, target_asset: str) -> bool:
         """Determines whether a headline specifically references the target equity/rToken."""
         target_clean = target_asset.upper()
+        # If another supported asset is the primary subject (e.g. Amazon in an Amazon headline), reject
+        primary = self.extract_asset(headline, default=None)
+        if primary and primary != target_clean:
+            return False
+
         mapping = RTOKEN_EQUITY_MAP.get(target_clean)
         headline_upper = headline.upper()
 
@@ -79,28 +84,42 @@ class EventEngine:
             if re.search(rf"\b{re.escape(ticker)}\b", headline_upper):
                 return True
             for kw in mapping["keywords"]:
-                if kw in headline_upper:
+                if re.search(rf"\b{re.escape(kw)}\b", headline_upper):
                     return True
             return False
 
         underlying = get_underlying_ticker(target_clean)
         return bool(re.search(rf"\b{re.escape(underlying)}\b", headline_upper))
 
-    def extract_asset(self, text: str, default: str = "RAAPLUSDT") -> str:
-        """Extracts asset ticker from text or falls back to default."""
+    def extract_asset(self, text: str, default: Optional[str] = None) -> Optional[str]:
+        """Extracts asset ticker from text based on earliest and most specific occurrence."""
         text_upper = text.upper()
+        matches = []
         for symbol, info in RTOKEN_EQUITY_MAP.items():
-            if symbol in text_upper or info["ticker"] in text_upper:
-                return symbol
+            if symbol in text_upper:
+                matches.append((text_upper.find(symbol), symbol))
+            ticker = info["ticker"]
+            m_ticker = re.search(r"\b" + re.escape(ticker) + r"\b", text_upper)
+            if m_ticker:
+                matches.append((m_ticker.start(), symbol))
             for kw in info["keywords"]:
-                if kw in text_upper:
-                    return symbol
-        if "BITCOIN" in text_upper or "BTC" in text_upper:
-            return "BTCUSDT"
-        if "ETHEREUM" in text_upper or "ETH" in text_upper:
-            return "ETHUSDT"
-        if "SOLANA" in text_upper or "SOL" in text_upper:
-            return "SOLUSDT"
+                m_kw = re.search(r"\b" + re.escape(kw) + r"\b", text_upper)
+                if m_kw:
+                    matches.append((m_kw.start(), symbol))
+        for crypto_kw, sym in [
+            ("BITCOIN", "BTCUSDT"),
+            ("BTC", "BTCUSDT"),
+            ("ETHEREUM", "ETHUSDT"),
+            ("ETH", "ETHUSDT"),
+            ("SOLANA", "SOLUSDT"),
+            ("SOL", "SOLUSDT"),
+        ]:
+            m = re.search(r"\b" + re.escape(crypto_kw) + r"\b", text_upper)
+            if m:
+                matches.append((m.start(), sym))
+        if matches:
+            matches.sort(key=lambda x: x[0])
+            return matches[0][1]
         return default
 
     def classify_event(self, event: MarketEvent) -> str:
@@ -236,9 +255,10 @@ class EventEngine:
                             if not title:
                                 continue
 
-                            is_ticker_feed = f"s={underlying_ticker}" in url
-                            if not is_ticker_feed and not self.is_relevant_to_asset(title, target_asset):
+                            if not self.is_relevant_to_asset(title, target_asset):
                                 continue
+
+                            mapped_asset = self.extract_asset(title, default=target_asset) or target_asset
 
                             event = self.normalize(
                                 {
@@ -246,7 +266,7 @@ class EventEngine:
                                     "source": "Yahoo-Finance" if "yahoo" in url else ("CNBC" if "cnbc" in url else "MarketWatch"),
                                     "source_url": link,
                                     "pubDate": pub_date,
-                                    "asset": target_asset,
+                                    "asset": mapped_asset,
                                 },
                                 default_asset=target_asset,
                             )

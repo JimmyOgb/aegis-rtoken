@@ -37,6 +37,23 @@ def test_asset_heuristic_extraction():
     assert engine.extract_asset("Solana break-point conference opens today") == "SOLUSDT"
     assert engine.extract_asset("Bitcoin network difficulty adjustment") == "BTCUSDT"
     assert engine.extract_asset("Generic economic commentary", default="BTCUSDT") == "BTCUSDT"
+    assert engine.extract_asset("Generic economic commentary") is None
+
+    # Multi-asset headline prioritizing earliest subject
+    amazon_headline = "Amazon Could Buy Up to $60 Billion From Qualcomm Just as Apple Brings Modems In-House. Is the AI Pivot Real?"
+    assert engine.extract_asset(amazon_headline) == "RAMZNUSDT"
+    assert engine.is_relevant_to_asset(amazon_headline, "RAAPLUSDT") is False
+    assert engine.is_relevant_to_asset(amazon_headline, "RAMZNUSDT") is True
+
+    # Genuine Apple headlines
+    apple_headline = "Apple Stock Slips After India Escalates iPhone Repair Investigation"
+    assert engine.extract_asset(apple_headline) == "RAAPLUSDT"
+    assert engine.is_relevant_to_asset(apple_headline, "RAAPLUSDT") is True
+
+    # Unrelated headline
+    openai_headline = "OpenAI acquires Glass Imaging camera startup for $300 million"
+    assert engine.extract_asset(openai_headline) is None
+    assert engine.is_relevant_to_asset(openai_headline, "RAAPLUSDT") is False
 
 
 def test_event_classification():

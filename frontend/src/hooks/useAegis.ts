@@ -8,6 +8,7 @@ import {
   fetchRecentDecisions,
   fetchMarkets,
 } from "@/lib/api";
+import { dedupeEventsById } from "@/lib/events";
 
 export function useAegis() {
   const [status, setStatus] = useState<AgentStatus | null>(null);
@@ -43,7 +44,9 @@ export function useAegis() {
 
       setMarket(marketRes);
       setMarkets(marketsRes || []);
-      setDecisions(decisionsRes || []);
+      setDecisions((prevDecisions) =>
+        dedupeEventsById([...(decisionsRes || []), ...prevDecisions])
+      );
     } catch {
       setStatus(null);
       setIsConnectedToBackend(false);

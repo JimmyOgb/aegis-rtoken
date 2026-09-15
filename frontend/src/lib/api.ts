@@ -1,4 +1,5 @@
 import { AgentStatus, DecisionRecord, MarketSnapshot, MarketOverviewItem } from "@/types";
+import { dedupeEventsById } from "./events";
 
 const API_BASE_URL = (process.env.NEXT_PUBLIC_AEGIS_API_URL || "").replace(/\/+$/, "");
 
@@ -42,7 +43,8 @@ export async function fetchRecentDecisions(limit = 25, symbol?: string): Promise
       : `${API_BASE_URL}/api/decisions?limit=${limit}`;
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return [];
-    return await res.json();
+    const data = await res.json();
+    return dedupeEventsById(Array.isArray(data) ? data : []);
   } catch {
     return [];
   }

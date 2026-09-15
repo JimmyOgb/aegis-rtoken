@@ -1,12 +1,14 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { DecisionRecord } from "@/types";
 import { History } from "lucide-react";
+import { dedupeEventsById } from "@/lib/events";
 
 interface EventTimelineProps {
   decisions: DecisionRecord[];
 }
 
 export const EventTimeline: React.FC<EventTimelineProps> = ({ decisions }) => {
+  const dedupedDecisions = useMemo(() => dedupeEventsById(decisions), [decisions]);
   const getDecisionStyle = (dec: string) => {
     switch (dec) {
       case "TRADE":
@@ -41,7 +43,7 @@ export const EventTimeline: React.FC<EventTimelineProps> = ({ decisions }) => {
           </h3>
         </div>
         <span className="text-xs text-slate-500 font-mono">
-          {decisions.length} Records
+          {dedupedDecisions.length} Records
         </span>
       </div>
 
@@ -59,8 +61,8 @@ export const EventTimeline: React.FC<EventTimelineProps> = ({ decisions }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60">
-            {decisions.length > 0 ? (
-              decisions.map((d) => (
+            {dedupedDecisions.length > 0 ? (
+              dedupedDecisions.map((d) => (
                 <tr key={d.event_id} className="hover:bg-slate-800/30 transition-colors">
                   <td className="py-3 pr-4 text-slate-400 whitespace-nowrap">
                     {new Date(d.timestamp).toLocaleTimeString()}

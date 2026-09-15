@@ -10,7 +10,7 @@ from aegis_rtoken.telemetry.logger import TelemetryLogger
 
 
 def test_api_read_endpoints(tmp_path):
-    feed = MarketFeed()
+    feed = MarketFeed(stale_timeout_seconds=300.0)
     feed.update_quote_manual("BTCUSDT", bid=60000.0, ask=60010.0)
     events = EventEngine()
     cb = CircuitBreaker()
