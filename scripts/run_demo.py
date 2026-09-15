@@ -69,9 +69,9 @@ def run_real_demo():
             
             # Process catalyst through real pipeline
             record = agent.process_event(event)
-            print(f"    Model Eval: Sentiment={record.sentiment.value} | Confidence={record.model_confidence:.2f}")
+            print(f"    Model Eval: Sentiment={record.model_sentiment.value} | Confidence={record.model_confidence:.2f}")
             print(f"    Verdict   : {record.decision.value}")
-            print(f"    Reason    : {record.reason}")
+            print(f"    Reason    : {record.decision_reason}")
 
     print("\n" + "=" * 70)
     print("Demonstration finished. Zero fake data was generated or presented.")

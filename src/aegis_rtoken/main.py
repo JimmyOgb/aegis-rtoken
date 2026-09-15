@@ -109,6 +109,13 @@ class AegisAgent:
             market or MarketSnapshot.calculate(symbol=event.asset, bid=0.0, ask=0.0, is_connected=False),
         )
 
+        # 3.5 Refresh real live quote right before deterministic risk evaluation
+        # Ensures quote freshness and orderbook state are evaluated at the exact moment of decision,
+        # preventing stale-quote timeouts caused by LLM network inference latency.
+        fresh_quote = self.feed.fetch_live_quote(event.asset)
+        if fresh_quote:
+            market = fresh_quote
+
         # 4. Deterministic Risk Gate Evaluation (Final Authority)
         decision, reason, risk_report = self.risk_engine.evaluate(event, analysis, market, candidate)
 

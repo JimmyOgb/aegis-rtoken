@@ -27,6 +27,7 @@ RTOKEN_EQUITY_MAP = {
     "RMSFTUSDT": {"ticker": "MSFT", "keywords": ["MSFT", "MICROSOFT", "SATYA NADELLA", "AZURE", "WINDOWS", "OPENAI PARTNER"]},
     "RAMZNUSDT": {"ticker": "AMZN", "keywords": ["AMZN", "AMAZON", "JEFF BEZOS", "ANDY JASSY", "AWS", "PRIME"]},
     "RGOOGLUSDT": {"ticker": "GOOGL", "keywords": ["GOOGL", "GOOG", "ALPHABET", "GOOGLE", "SUNDAR PICHAI", "YOUTUBE", "GEMINI"]},
+    "RMETAUSDT": {"ticker": "META", "keywords": ["META", "FACEBOOK", "MARK ZUCKERBERG", "INSTAGRAM", "WHATSAPP", "LLAMA", "OCULUS"]},
     "RSPYUSDT": {"ticker": "SPY", "keywords": ["SPY", "S&P", "S&P 500", "STANDARD & POOR'S", "SP500"]},
     "RQQQUSDT": {"ticker": "QQQ", "keywords": ["QQQ", "NASDAQ", "NASDAQ 100", "TECH STOCKS"]},
 }
